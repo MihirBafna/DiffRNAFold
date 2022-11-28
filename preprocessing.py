@@ -21,12 +21,11 @@ def pdb2pandas(pdb_path):
     return df
 
 
-def create_pyg_datalist(data_path, max_pointcloud_size):
-    max_pointcloud_size = 1233
+def create_pyg_datalist(data_path, max_pointcloud_size=1233):
     datalist = []
     shape_list = []
-    # for filename in track(os.listdir(data_path), description="[cyan]Creating PyG Data from RNA pdb files"):
-    for filename in tqdm(os.listdir(data_path), desc="Parsing Data from RNA pdb files"):
+    for filename in track(os.listdir(data_path), description="[cyan]Creating PyG Data from RNA pdb files"):
+    # for filename in tqdm(os.listdir(data_path), desc="Parsing Data from RNA pdb files"):
         if filename.endswith("pdb"):
             pdb_df = pdb2pandas(os.path.join(data_path, filename))
             coordinates = pdb_df[["x_coord","y_coord","z_coord"]].to_numpy()         # should be shape (num_atoms,3)
@@ -42,3 +41,16 @@ def create_pyg_datalist(data_path, max_pointcloud_size):
             #     raise Exception("Incorrect max_pointcloud_size")
             
     return datalist, shape_list
+
+
+def create_dataloaders(data_list, batch_size=1):
+    X_train, X_t = train_test_split(data_list, test_size=0.33, random_state=42)
+    X_val, X_test = train_test_split(X_t, test_size=0.5, random_state=42)
+
+    assert len(X_train) + len(X_val) + len(X_test) == len(data_list)
+    
+    train_data_loader = DataLoader(X_train, batch_size=batch_size)
+    val_data_loader = DataLoader(X_val, batch_size=batch_size)
+    test_data_loader = DataLoader(X_test, batch_size=batch_size)
+    
+    return train_data_loader, val_data_loader, test_data_loader 
