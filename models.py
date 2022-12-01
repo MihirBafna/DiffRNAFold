@@ -48,6 +48,22 @@ class PointAutoEncoder(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv1d(256, num_points * 3, kernel_size=1)
         )
+        
+        self.apply(self.weights_init_uniform)
+        # self.weights_init_uniform(self.pointwise_layers)
+        # self.weights_init_uniform(self.decoder)
+
+
+    def weights_init_uniform(self, m):
+        classname = m.__class__.__name__
+        # for every Linear layer in a model..
+        if classname.find('Linear') != -1:
+            # apply a uniform distribution to the weights and a bias=0
+            m.weight.data.normal_(mean=0.0, std=0.12)
+            m.bias.data.fill_(0)
+        if classname.find('Conv1d')!= -1:
+            m.weight.data.normal_(mean=0.0, std=0.12)
+
 
     def forward(self, x):
         """
