@@ -24,6 +24,8 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, i
                 # print(reconstructed[:, :num_atoms, :].shape, data.pos.unsqueeze(0)[:, :num_atoms, :].shape)
                 
                 loss = criterion(reconstructed[:, :num_atoms, :], data.pos.unsqueeze(0)[:, :num_atoms, :], bidirectional=True)
+                # mseloss = mse(reconstructed[:, :num_atoms, 4:],  data.pos.unsqueeze(0)[:, :num_atoms, 4:])
+                # loss += mseloss
                 mseloss = mse(reconstructed.detach(), data.pos.unsqueeze(0).detach())
                 loss.backward()  # Backward pass.
                 optimizer.step()  # Update model parameters.

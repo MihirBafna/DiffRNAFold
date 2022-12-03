@@ -8,6 +8,8 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from biopandas.pdb import PandasPdb
+from collections import defaultdict
+
 
 
 
@@ -19,8 +21,19 @@ def pdb2pandas(pdb_path):
         + df["residue_name"]
     )
     df["residue_id"] = df["residue_name"]
-    mapping = {'DA': 0, 'A': 0, 'C': 1,'DC': 1, 'DG': 2, 'G': 2, 'U': 3, 'DU': 3, 'DT': 3, 'I':4, 'DI':4}
-    df = df.replace({"residue_id":mapping})
+    mapping = defaultdict(lambda: "1 0 1")
+    mapping["A"] = "0 0 0"
+    mapping["T"] = "0 0 1"
+    mapping["U"] = "0 0 1"
+    mapping["C"] = "0 1 0"
+    mapping["G"] = "0 1 1"
+    mapping["DA"] = "1 0 0"
+    mapping["DT"] = "1 0 1"
+    mapping["DU"] = "1 0 1"
+    mapping["DC"] = "1 1 0"
+    mapping["DG"] = "1 1 1"
+
+    df["residue_id"] = df["residue_id"].map(mapping)
     return df
 
 
@@ -43,7 +56,7 @@ def create_pyg_datalist(data_path, max_pointcloud_size, withfeatures=True):
             coordinates = pdb_df[["x_coord","y_coord","z_coord"]].to_numpy()         # should be shape (num_atoms,3)
             coordinates = normalize_pc(coordinates)
             atom_number = torch.from_numpy(pdb_df[["atom_number"]].to_numpy())
-            residue_ids = np.eye(5)[pdb_df["residue_id"].to_numpy().astype(float).astype(int)]
+            residue_ids = pdb_df['residue_id'].str.split(' ',expand=True).to_numpy().astype(int)
             coordinates = np.concatenate((coordinates, residue_ids), axis=1) if withfeatures else coordinates
             node_id = pdb_df[["node_id"]].to_numpy()
             shape_list.append(coordinates.shape[0])

@@ -17,7 +17,7 @@ from torch_geometric.nn import MessagePassing
 
 
 class PointAutoEncoder(nn.Module):
-    def __init__(self, num_points, latent_dim):
+    def __init__(self, num_points, latent_dim, num_features = 0):
         """
             Architecture from https://arxiv.org/pdf/1707.02392.pdf  Learning Representations and Generative Models for 3D Point Clouds
             Adapted from https://github.com/TropComplique/point-cloud-autoencoder
@@ -29,7 +29,7 @@ class PointAutoEncoder(nn.Module):
         super(PointAutoEncoder, self).__init__()
 
         pointwise_layers = []
-        num_units = [3, 64, 128, 128, 256, latent_dim]
+        num_units = [num_features + 3, 64, 128, 128, 256, latent_dim]
 
         for n, m in zip(num_units[:-1], num_units[1:]):
             pointwise_layers.extend([
@@ -40,13 +40,13 @@ class PointAutoEncoder(nn.Module):
 
         self.pointwise_layers = nn.Sequential(*pointwise_layers)
         self.pooling = nn.AdaptiveMaxPool1d(1)
-
+        self.num_features= num_features
         self.decoder = nn.Sequential(
             nn.Conv1d(latent_dim, 256, kernel_size=1, bias=False),
             nn.ReLU(inplace=True),
             nn.Conv1d(256, 256, kernel_size=1, bias=False),
             nn.ReLU(inplace=True),
-            nn.Conv1d(256, num_points * 3, kernel_size=1)
+            nn.Conv1d(256, num_points * (3 + num_features), kernel_size=1)
         )
         
         self.apply(self.weights_init_uniform)
@@ -80,7 +80,7 @@ class PointAutoEncoder(nn.Module):
         encoding = self.pooling(x)  # shape [b, k, 1]
 
         x = self.decoder(encoding)  # shape [b, num_points * 3, 1]
-        restoration = x.view(b, num_points, 3)
+        restoration = x.view(b, num_points, 3 + self.num_features)
 
         return encoding, restoration
 

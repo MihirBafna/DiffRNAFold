@@ -17,7 +17,7 @@ import training
 def parse_arguments():
     parser = argparse.ArgumentParser(description='clarifyGAE arguments')
     parser.add_argument("-m", "--mode", type=str, default = "train",
-        help="Pipeline Mode: preprocess|train|test")
+        help="Pipeline Mode: preprocess,train,test")
     parser.add_argument("-i", "--inputdirpath", type=str,
                     help="Input directory path where PDB data is stored")
     parser.add_argument("-o", "--outputdirpath", type=str,
@@ -67,11 +67,12 @@ def main():
                 val_loader = torch.load(os.path.join(preprocess_output_path,f'val_dataloader_{studyname}.pth'))
 
         # modularize hyperparameter selection
+        epochs = 1000
+        num_features = 3
 
-        model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=128)
+        model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
         criterion = ChamferDistance()
-        epochs = 5000
         intermediate_save_path = None
 
         if epochs >= 500:
