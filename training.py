@@ -1,14 +1,16 @@
 from tqdm import tqdm
 import wandb
 import torch
+from pytorch3d.loss import chamfer_distance
 
-
-def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, intermediate_save_path=None):
+def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, batch_size=1, intermediate_save_path=None):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     mse = torch.nn.MSELoss()
     val_loss = 0
     val_mseloss = 0
     val_rec_loss = 0
     val_kl_loss = 0
+    model = model.to(device)
     for epoch in range(epochs):
         epoch_loss = 0
         epoch_rec_loss = 0
@@ -16,18 +18,20 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, i
         mse_loss = 0
         model.train()
         with tqdm(train_loader) as tepoch:
-            for data in tepoch:
+            # for data in tepoch:
+            for idx, data in enumerate(tepoch):
+                x = data.float().to(device)
                 tepoch.set_description(f"Epoch: {epoch}")
                 optimizer.zero_grad()  # Clear gradients.
                 # reconstructed = model(data.pos, data.batch)# Forward pass.
-                reconstructed, mu_x, sigma_x, mu_y, sigma_y, mu_z, sigma_z = model(data.pos)
+                # data.pos = data.pos.view(batch_size, -1, model.input_dim)
+                reconstructed, mu_x, sigma_x, mu_y, sigma_y, mu_z, sigma_z = model(x)
                 
                 # calculate num nodes that are unpadded
                 data_detached = data.detach()
-                num_atoms = data_detached.atom_number.max() - data_detached.atom_number.min() + 1
+                # num_atoms = data_detached.atom_number.max() - data_detached.atom_number.min() + 1
                 # print(reconstructed[:, :num_atoms, :].shape, data.pos.unsqueeze(0)[:, :num_atoms, :].shape)
-                
-                reconstruction_loss = criterion(reconstructed[:, :num_atoms, :], data.pos.unsqueeze(0)[:, :num_atoms, :], bidirectional=True)
+                reconstruction_loss, _ = chamfer_distance(reconstructed[:, :, :], x[:, :, :])
                 KLD_element_x = torch.pow(mu_x, 2) + torch.pow(
 			        sigma_x, 2) - torch.log(1e-8 + torch.pow(sigma_x, 2)) - 1.0
                 KLD_element_y = torch.pow(mu_y, 2) + torch.pow(
@@ -39,7 +43,7 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, i
                 # mseloss = mse(reconstructed[:, :num_atoms, 4:],  data.pos.unsqueeze(0)[:, :num_atoms, 4:])
                 # loss += mseloss
                 loss = reconstruction_loss + loss_KL
-                mseloss = mse(reconstructed.detach(), data.pos.unsqueeze(0).detach())
+                mseloss = mse(reconstructed.detach(), x.detach())
                 loss.backward()  # Backward pass.
                 optimizer.step()  # Update model parameters.
                 tepoch.set_postfix(loss=loss.item(), mse = mseloss.item())
@@ -56,7 +60,8 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, i
             val_mseloss = 0
             model.eval()
             for valdata in val_loader:
-                reconstructed, mu_x, sigma_x, mu_y, sigma_y, mu_z, sigma_z = model(valdata.pos)
+                val_x = valdata.float().to(device)
+                reconstructed, mu_x, sigma_x, mu_y, sigma_y, mu_z, sigma_z = model(val_x)
                 KLD_element_x = torch.pow(mu_x, 2) + torch.pow(
 			        sigma_x, 2) - torch.log(1e-8 + torch.pow(sigma_x, 2)) - 1.0
                 KLD_element_y = torch.pow(mu_y, 2) + torch.pow(
@@ -64,11 +69,13 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, i
                 KLD_element_z = torch.pow(mu_z, 2) + torch.pow(
                     sigma_z, 2) - torch.log(1e-8 + torch.pow(sigma_z, 2)) - 1.0
                 loss_KL = (2 * torch.sum(KLD_element_x) + torch.sum(KLD_element_y) + torch.sum(KLD_element_z)).item()
-                reconstruction_loss = criterion(reconstructed.detach(), data.pos.unsqueeze(0).detach()).item()
+                reconstruction_loss = criterion(reconstructed.detach(), val_x.detach()).item()
                 val_loss += loss_KL + reconstruction_loss
                 val_rec_loss += reconstruction_loss
                 val_kl_loss += loss_KL
-                val_mseloss += mse(reconstructed.detach(), data.pos.unsqueeze(0).detach()).item()
+                val_mseloss += mse(reconstructed.detach(), val_x.detach()).item()
+                if intermediate_save_path is not None:
+                    torch.save(model.state_dict(), intermediate_save_path[2])
         wandb.log({"epoch": epoch, "train_loss": epoch_loss/len(tepoch), "train_rec_loss": epoch_rec_loss/len(tepoch), "train_kl_loss": epoch_kl_loss/len(tepoch), "train_mseloss":mseloss/len(train_loader),
                 "val_loss":val_loss/len(val_loader),  "val_rec_loss": val_rec_loss/len(val_loader), "val_kl_loss": val_kl_loss/len(val_loader), "val_mseloss":val_mseloss/len(val_loader)})
         

@@ -6,7 +6,8 @@ import os
 from rich.progress import track
 import torch
 from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader
+# from torch_geometric.loader import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from biopandas.pdb import PandasPdb
 from collections import defaultdict
 
@@ -92,10 +93,10 @@ def create_pyg_datalist(data_path, max_pointcloud_size, withfeatures=True, augme
                 temp_coordinates = normalized_coordinates.copy()    
                 for i in range(augment_num):
                     feature_coordinates = np.concatenate((temp_coordinates, residue_ids), axis=1) if withfeatures else temp_coordinates
-                    # print(feature_coordinates,i)
                     padded_coordinates = pad_pc(feature_coordinates, paddingamount)
-                    
-                    data = Data(pos=torch.from_numpy(padded_coordinates).type(torch.FloatTensor), atom_number=atom_number, y=node_id, num_nodes=padded_coordinates.shape[0])
+                    # data = Data(pos=torch.from_numpy(padded_coordinates).type(torch.FloatTensor), atom_number=atom_number, y=node_id, num_nodes=padded_coordinates.shape[0])
+                    # print(data)
+                    data = {"pos": padded_coordinates.type(torch.FloatTensor), "atom_number":atom_number, "y": node_id, "num_nodes": padded_coordinates.shape[0]}
                     datalist.append(data)
                     temp_coordinates = augment_pc(normalized_coordinates.copy())
 
@@ -103,10 +104,17 @@ def create_pyg_datalist(data_path, max_pointcloud_size, withfeatures=True, augme
 
     return datalist, shape_list
 
+class PDBDataset(Dataset):
+    def __init__(self, data):
+        self.pdbs = data
+    def __len__(self):
+        return len(self.pdbs)
+    def __getitem__(self, idx):
+        return self.pdbs[idx]["pos"]
 
 def create_dataloaders(data_list, batch_size=1, with_val= False):
-        
-    X_train, X_t = train_test_split(data_list, test_size=0.2, random_state=42)
+    dataset = PDBDataset(data_list)
+    X_train, X_t = train_test_split(dataset, test_size=0.2, random_state=42)
     
     if with_val:
         X_val, X_test = train_test_split(X_t, test_size=0.5, random_state=42)

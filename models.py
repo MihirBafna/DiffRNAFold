@@ -73,7 +73,6 @@ class PointVAE(nn.Module):
 		self.apply(self.weights_init_uniform)
 
 	def encoder(self, x):
-		x = x.unsqueeze(0)
 		x = x.transpose(1, 2)  # BxCxN
 		x = self.relu(self.E_conv1(x))
 		x = self.relu(self.E_conv2(x))
