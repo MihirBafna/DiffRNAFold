@@ -5,7 +5,6 @@ import os
 import argparse
 from rich.table import Table
 from rich.console import Console
-from chamferdist import ChamferDistance
 import torch
 from pytorch3d.loss import chamfer_distance
 import preprocessing
