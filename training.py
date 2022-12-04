@@ -2,6 +2,7 @@ from tqdm import tqdm
 import wandb
 import torch
 from pytorch3d.loss import chamfer_distance
+import random
 
 def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, kl_coeff=1, intermediate_save_path=None):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -11,6 +12,10 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
     val_rec_loss = 0
     val_kl_loss = 0
     model = model.to(device)
+    rand_val_idx = random.randint(0, len(val_loader))
+    rand_val_sub_idx = random.randint(0, 16)
+    rand_idx = random.randint(0, len(train_loader))
+    rand_sub_idx = random.randint(0, 16)
     for epoch in range(epochs):
         epoch_loss = 0
         epoch_rec_loss = 0
@@ -39,12 +44,14 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
                 elif type(model).__name__ == "PointAutoEncoder":
                     _, reconstructed = model(x)
 
+                if idx == rand_idx:
+                    wandb.log({"epoch":epoch, "Ground Truth": wandb.Object3D({"type": "lidar/beta","points":x[rand_sub_idx, :, :]}), "Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_sub_idx, :, :]})})
                 
                 # calculate num nodes that are unpadded
                 # num_atoms = data_detached.atom_number.max() - data_detached.atom_number.min() + 1
                 # print(reconstructed[:, :num_atoms, :].shape, data.pos.unsqueeze(0)[:, :num_atoms, :].shape)
                 reconstruction_loss, _ = chamfer_distance(reconstructed[:, :, :], x[:, :, :])
-
+                
 
                 # mseloss = mse(reconstructed[:, :num_atoms, 4:],  data.pos.unsqueeze(0)[:, :num_atoms, 4:])
                 # loss += mseloss
@@ -60,7 +67,6 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
                 epoch_rec_loss += reconstruction_loss.item()
 
                 mse_loss += mseloss.item()
-
   
         if epoch % 5 == 0 and val_loader is not None:
             val_loss = 0
@@ -68,7 +74,7 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
             val_kl_loss = 0
             val_mseloss = 0
             model.eval()
-            for valdata in val_loader:
+            for val_idx, valdata in enumerate(val_loader):
                 val_x = valdata.float().to(device)
                 if type(model).__name__ == "PointVAE":
                     reconstructed, mu_x, sigma_x, mu_y, sigma_y, mu_z, sigma_z = model(val_x)           
@@ -87,7 +93,8 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
                     val_loss += loss_KL + reconstruction_loss
                 elif type(model).__name__ == "PointAutoEncoder":
                     val_loss += reconstruction_loss
-                
+                if val_idx == rand_val_idx:
+                    wandb.log({"epoch":epoch, "Val Ground Truth": wandb.Object3D({"type": "lidar/beta","points":val_x[rand_val_sub_idx, :, :]}), "Val Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_val_sub_idx, :, :]})})
                 val_rec_loss += reconstruction_loss
                 val_mseloss += mse(reconstructed.detach(), val_x.detach()).item()
             if intermediate_save_path is not None:
