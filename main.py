@@ -31,15 +31,26 @@ def parse_arguments():
 
 
 def main():
+    default_config = {
+        "lr": 0.0001,
+        "latent_dim": 128,
+        "model_type": "AE"
+    }
     args = parse_arguments()
-    mode = args.mode
-    data_dir_path = args.inputdirpath
-    output_dir_path = args.outputdirpath
-    studyname = args.studyname
+    if args is None:
+        mode = "train"
+        data_dir_path = r'.\data\raw\all_representative_pdb_4_0__3_258'
+        output_dir_path = r'.\out'
+        studyname = "PDB(100-140)_Normalized_VAE_Augmented"
+    else:
+        mode = args.mode
+        data_dir_path = args.inputdirpath
+        output_dir_path = args.outputdirpath
+        studyname = args.studyname
     
     preprocess_output_path = os.path.join(output_dir_path, "preprocessed")
     training_output_path = os.path.join(output_dir_path, "train")
-    batchSize=16
+    batchSize= 16
     pointcloudsize = 140
     withval = True
     
@@ -69,10 +80,8 @@ def main():
         # modularize hyperparameter selection
         epochs = 1000
         num_features = 0
-
-        model = models.PointVAE(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-        criterion = ChamferDistance()
+        
+        
         intermediate_save_path = None
         if epochs >= 500:
             intermediate_save_path1 = os.path.join(training_output_path,f'trained_model_{studyname}_100epochs.pth')
@@ -80,14 +89,18 @@ def main():
             intermediate_save_path3 = os.path.join(training_output_path,f'trained_model_{studyname}_checkpointepochs.pth')
             intermediate_save_path = (intermediate_save_path1, intermediate_save_path2, intermediate_save_path3)
             
-        wandb.init(project="DiffRNAFold-VAE", entity="diffrnafold")
-
+        wandb.init(project="DiffFold-Sweep", entity="diffrnafold", config=default_config)
         if not os.path.exists(training_output_path):
             os.mkdir(training_output_path)
-
+        if wandb.config.model_type == "VAE":
+            model = models.PointVAE(num_points=pointcloudsize, latent_dim=wandb.config.latent_dim, num_features=num_features)
+        else:
+            model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=wandb.config.latent_dim, num_features=num_features)
+        optimizer = torch.optim.Adam(model.parameters(), lr=wandb.config.lr)
+        criterion = ChamferDistance()
         trained_model = training.train_model(model, optimizer, train_loader, epochs, criterion, val_loader, batchSize, intermediate_save_path)
 
         torch.save(trained_model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
 
 if __name__ == "__main__":
-    main()
+    wandb.agent("kab3yo3k", project="DiffFold-Sweep", entity="diffrnafold", function=main)

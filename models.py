@@ -204,7 +204,6 @@ class PointAutoEncoder(nn.Module):
 			encoding: a float tensor with shape [b, k].
 			restoration: a float tensor with shape [b, 3, num_points].
 		"""
-		x = x.unsqueeze(0)
 		x = torch.permute(x, (0, 2, 1))
 		b, _, num_points = x.size()
 		x = self.pointwise_layers(x)  # shape [b, k, num_points]
