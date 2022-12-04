@@ -37,6 +37,25 @@ def pdb2pandas(pdb_path):
     return df
 
 
+def augment_pc(points):
+    
+    theta_x, theta_y, theta_z = tuple(np.random.rand(3) * 2 *np.pi)
+    
+    
+    rotate_x = np.array([[1,0,0],
+                         [0,  np.cos(theta_x), -np.sin(theta_x)],
+                         [0, np.sin(theta_x), np.cos(theta_x)]])
+    rotate_y = np.array([[np.cos(theta_y), 0,  -np.sin(theta_y)],
+                         [0,1,0],
+                         [np.sin(theta_y), 0 , np.cos(theta_y)]])  
+    rotate_z = np.array([[np.cos(theta_z), -np.sin(theta_z), 0],
+                         [np.sin(theta_z), np.cos(theta_z), 0],
+                         [0,0, 1]])
+    return  points @ (rotate_z @ rotate_y @ rotate_x).T
+
+
+
+
 def normalize_pc(points):
 	centroid = np.mean(points, axis=0)
 	points -= centroid
@@ -45,29 +64,43 @@ def normalize_pc(points):
 	return points
 
 
+def pad_pc(points, amount):
+    coords_padded = np.pad(points, ((0, amount),(0, 0)), 'constant', constant_values=(0, 0))
+    return coords_padded
 
-def create_pyg_datalist(data_path, max_pointcloud_size, withfeatures=True):
+
+def create_pyg_datalist(data_path, max_pointcloud_size, withfeatures=True, augment_num=10):
     datalist = []
     shape_list = []
     for filename in track(os.listdir(data_path), description="[cyan]Creating PyG Data from RNA pdb files"):
-    # for filename in tqdm(os.listdir(data_path), desc="Parsing Data from RNA pdb files"):
         if filename.endswith("pdb"):
             pdb_df = pdb2pandas(os.path.join(data_path, filename))
-            coordinates = pdb_df[["x_coord","y_coord","z_coord"]].to_numpy()         # should be shape (num_atoms,3)
-            coordinates = normalize_pc(coordinates)
+            
             atom_number = torch.from_numpy(pdb_df[["atom_number"]].to_numpy())
             residue_ids = pdb_df['residue_id'].str.split(' ',expand=True).to_numpy().astype(int)
-            coordinates = np.concatenate((coordinates, residue_ids), axis=1) if withfeatures else coordinates
             node_id = pdb_df[["node_id"]].to_numpy()
-            shape_list.append(coordinates.shape[0])
-            if coordinates.shape[0] <= max_pointcloud_size and coordinates.shape[0] >=100:
-                paddingamount = max_pointcloud_size - coordinates.shape[0]
-                coords_padded = torch.from_numpy(np.pad(coordinates, ((0, paddingamount),(0, 0)), 'constant', constant_values=(0, 0))).type(torch.FloatTensor)    
-                data = Data(pos=coords_padded, atom_number=atom_number, y=node_id, num_nodes=coords_padded.shape[0])
-                datalist.append(data)
-            # else:
-            #     raise Exception("Incorrect max_pointcloud_size")
             
+            raw_coordinates = pdb_df[["x_coord","y_coord","z_coord"]].to_numpy()         # should be shape (num_atoms,3)
+            
+            if raw_coordinates.shape[0] <= max_pointcloud_size and raw_coordinates.shape[0] >=100:
+                
+                paddingamount = max_pointcloud_size - raw_coordinates.shape[0]
+                shape_list.append(raw_coordinates.shape[0])
+
+                normalized_coordinates = normalize_pc(raw_coordinates)
+                
+                temp_coordinates = normalized_coordinates.copy()    
+                for i in range(augment_num):
+                    feature_coordinates = np.concatenate((temp_coordinates, residue_ids), axis=1) if withfeatures else temp_coordinates
+                    # print(feature_coordinates,i)
+                    padded_coordinates = pad_pc(feature_coordinates, paddingamount)
+                    
+                    data = Data(pos=torch.from_numpy(padded_coordinates).type(torch.FloatTensor), atom_number=atom_number, y=node_id, num_nodes=padded_coordinates.shape[0])
+                    datalist.append(data)
+                    temp_coordinates = augment_pc(normalized_coordinates.copy())
+
+
+
     return datalist, shape_list
 
 

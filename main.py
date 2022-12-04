@@ -47,7 +47,7 @@ def main():
     
         print("\n#------------------------------ Preprocessing ----------------------------#\n")
 
-        data_list, _ = preprocessing.create_pyg_datalist(data_dir_path, pointcloudsize)
+        data_list, _ = preprocessing.create_pyg_datalist(data_dir_path, pointcloudsize, withfeatures=False)
         train_loader, test_loader, val_loader = preprocessing.create_dataloaders(data_list, batch_size=1, with_val=withval)
         
         if not os.path.exists(preprocess_output_path):
@@ -68,9 +68,9 @@ def main():
 
         # modularize hyperparameter selection
         epochs = 1000
-        num_features = 3
+        num_features = 0
 
-        model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
+        model = models.PointVAE(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
         criterion = ChamferDistance()
         intermediate_save_path = None
@@ -80,7 +80,7 @@ def main():
             intermediate_save_path2 = os.path.join(training_output_path,f'trained_model_{studyname}_500epochs.pth')
             intermediate_save_path = (intermediate_save_path1, intermediate_save_path2)
             
-        wandb.init(project="DiffRNAFold", entity="diffrnafold")
+        wandb.init(project="DiffRNAFold-VAE", entity="diffrnafold")
 
         if not os.path.exists(training_output_path):
             os.mkdir(training_output_path)
