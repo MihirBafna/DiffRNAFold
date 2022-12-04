@@ -16,6 +16,88 @@ from torch.nn import Sequential, Linear, ReLU
 from torch_geometric.nn import MessagePassing
 
 
+
+class PointAutoEncoderV2(nn.Module):
+    def __init__(self, num_points, latent_dim, num_features = 0):
+        """
+            Architecture from https://arxiv.org/pdf/1707.02392.pdf  Learning Representations and Generative Models for 3D Point Clouds
+            Adapted from https://github.com/TropComplique/point-cloud-autoencoder
+
+            Arguments: 
+                num_points: integer describing number of points in each padded point cloud
+                latent_dim: integer describing dimensionality of latent vector
+        """
+        super(PointAutoEncoderV2, self).__init__()
+
+        pointwise_layers = []
+        num_units = [num_features + 3, 64, 128, 128, 256, latent_dim]
+
+        for n, m in zip(num_units[:-1], num_units[1:]):
+            pointwise_layers.extend([
+                nn.Conv1d(n, m, kernel_size=1, bias=False),
+                nn.BatchNorm1d(m),
+                nn.ReLU(inplace=True)
+            ])
+
+        self.pointwise_layers = nn.Sequential(*pointwise_layers)
+        self.pooling = nn.AdaptiveMaxPool1d(1)
+        self.num_features= num_features
+        self.decoder = nn.Sequential(
+            nn.Conv1d(latent_dim, 256, kernel_size=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(256, 256, kernel_size=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(256, num_points * 3, kernel_size=1)
+        )
+        self.mlp1 = nn.Sequential(
+            nn.Linear(latent_dim, latent_dim//2),
+            nn.ReLU(inplace=True),
+            nn.Linear(latent_dim//2, num_points)
+        )
+        self.mlp2 = nn.Sequential(
+            nn.Linear(latent_dim, latent_dim//2),
+            nn.ReLU(inplace=True),
+            nn.Linear(latent_dim//2, num_points)
+        )
+        
+        self.apply(self.weights_init_uniform)
+
+
+    def weights_init_uniform(self, m):
+        classname = m.__class__.__name__
+        # for every Linear layer in a model..
+        if classname.find('Linear') != -1:
+            # apply a uniform distribution to the weights and a bias=0
+            m.weight.data.normal_(mean=0.0, std=0.12)
+            m.bias.data.fill_(0)
+        if classname.find('Conv1d')!= -1:
+            m.weight.data.normal_(mean=0.0, std=0.12)
+
+
+    def forward(self, x):
+        """
+        Arguments:
+            x: a float tensor with shape [b, 3, num_points].
+        Returns:
+            encoding: a float tensor with shape [b, k].
+            restoration: a float tensor with shape [b, 3, num_points].
+        """
+        x = x.unsqueeze(0)
+        x = torch.permute(x, (0, 2, 1))
+        b, _, num_points = x.size()
+        x = self.pointwise_layers(x)  # shape [b, k, num_points]
+        encoding = self.pooling(x)  # shape [b, k, 1]
+
+        
+
+        x = self.decoder(encoding)  # shape [b, num_points * 3, 1]
+        restoration = x.view(b, num_points, 3)
+
+        return encoding, restoration
+
+
+
+
 class PointAutoEncoder(nn.Module):
     def __init__(self, num_points, latent_dim, num_features = 0):
         """
@@ -46,12 +128,9 @@ class PointAutoEncoder(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv1d(256, 256, kernel_size=1, bias=False),
             nn.ReLU(inplace=True),
-            nn.Conv1d(256, num_points * (3 + num_features), kernel_size=1)
+            nn.Conv1d(256, num_points * 3, kernel_size=1)
         )
-        
         self.apply(self.weights_init_uniform)
-        # self.weights_init_uniform(self.pointwise_layers)
-        # self.weights_init_uniform(self.decoder)
 
 
     def weights_init_uniform(self, m):
