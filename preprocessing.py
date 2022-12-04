@@ -20,20 +20,25 @@ def pdb2pandas(pdb_path):
         + df["residue_number"].map(str)
         + df["residue_name"]
     )
-    df["residue_id"] = df["residue_name"]
-    mapping = defaultdict(lambda: "1 0 1")
-    mapping["A"] = "0 0 0"
-    mapping["T"] = "0 0 1"
-    mapping["U"] = "0 0 1"
-    mapping["C"] = "0 1 0"
-    mapping["G"] = "0 1 1"
-    mapping["DA"] = "1 0 0"
-    mapping["DT"] = "1 0 1"
-    mapping["DU"] = "1 0 1"
-    mapping["DC"] = "1 1 0"
-    mapping["DG"] = "1 1 1"
+    residue_mapping = defaultdict(lambda: 8)
+    residue_mapping["A"] = 0
+    residue_mapping["T"] = 1
+    residue_mapping["U"] = 1
+    residue_mapping["C"] = 2
+    residue_mapping["G"] = 3
+    residue_mapping["DA"] = 4
+    residue_mapping["DT"] = 5
+    residue_mapping["DU"] = 5
+    residue_mapping["DC"] = 6
+    residue_mapping["DG"] = 7
+    
+    element_mapping = {'C':0, 'N':1, 'O':2, 'P':3}
 
-    df["residue_id"] = df["residue_id"].map(mapping)
+    
+
+    df["residue_id"] = df["residue_name"].map(residue_mapping)
+    df["element_id"] = df["element_symbol"].map(element_mapping)
+
     return df
 
 
@@ -77,7 +82,9 @@ def create_pyg_datalist(data_path, max_pointcloud_size, withfeatures=True, augme
             pdb_df = pdb2pandas(os.path.join(data_path, filename))
             
             atom_number = torch.from_numpy(pdb_df[["atom_number"]].to_numpy())
-            residue_ids = pdb_df['residue_id'].str.split(' ',expand=True).to_numpy().astype(int)
+            # residue_ids = pdb_df['residue_id'].str.split(' ',expand=True).to_numpy().astype(int)
+            residue_ids = pdb_df[["residue_id"]].to_numpy()
+            element_ids = pdb_df[["element_id"]].to_numpy()
             node_id = pdb_df[["node_id"]].to_numpy()
             
             raw_coordinates = pdb_df[["x_coord","y_coord","z_coord"]].to_numpy()         # should be shape (num_atoms,3)
@@ -88,18 +95,16 @@ def create_pyg_datalist(data_path, max_pointcloud_size, withfeatures=True, augme
                 shape_list.append(raw_coordinates.shape[0])
 
                 normalized_coordinates = normalize_pc(raw_coordinates)
-                
                 temp_coordinates = normalized_coordinates.copy()    
+                
                 for i in range(augment_num):
-                    feature_coordinates = np.concatenate((temp_coordinates, residue_ids), axis=1) if withfeatures else temp_coordinates
+                    feature_coordinates = np.concatenate((temp_coordinates, residue_ids, element_ids), axis=1) if withfeatures else temp_coordinates
                     # print(feature_coordinates,i)
                     padded_coordinates = pad_pc(feature_coordinates, paddingamount)
                     
                     data = Data(pos=torch.from_numpy(padded_coordinates).type(torch.FloatTensor), atom_number=atom_number, y=node_id, num_nodes=padded_coordinates.shape[0])
                     datalist.append(data)
                     temp_coordinates = augment_pc(normalized_coordinates.copy())
-
-
 
     return datalist, shape_list
 

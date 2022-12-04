@@ -5,8 +5,8 @@ import os
 import argparse
 from rich.table import Table
 from rich.console import Console
+from chamferdist import ChamferDistance
 import torch
-# from chamferdist import ChamferDistance
 from pytorch3d.loss import chamfer_distance
 import preprocessing
 import models
@@ -40,16 +40,24 @@ def main():
     
     preprocess_output_path = os.path.join(output_dir_path, "preprocessed")
     training_output_path = os.path.join(output_dir_path, "train")
-
+    
+    # modularize hyperparameter selection
+    epochs = 1000
+    num_features = 2
     pointcloudsize = 140
     withval = True
+    withFeatures= True
+    batch_size = 1
+    augment_num = 1 # no augmentation
+    latent_dimension = 128
+    
     
     if "preprocess" in mode:
     
         print("\n#------------------------------ Preprocessing ----------------------------#\n")
 
-        data_list, _ = preprocessing.create_pyg_datalist(data_dir_path, pointcloudsize, withfeatures=False)
-        train_loader, test_loader, val_loader = preprocessing.create_dataloaders(data_list, batch_size=1, with_val=withval)
+        data_list, _ = preprocessing.create_pyg_datalist(data_dir_path, pointcloudsize, withfeatures=withFeatures, augment_num=1)
+        train_loader, test_loader, val_loader = preprocessing.create_dataloaders(data_list, batch_size=batch_size, with_val=withval)
         
         if not os.path.exists(preprocess_output_path):
             os.mkdir(preprocess_output_path)
@@ -67,13 +75,11 @@ def main():
             if withval:
                 val_loader = torch.load(os.path.join(preprocess_output_path,f'val_dataloader_{studyname}.pth'))
 
-        # modularize hyperparameter selection
-        epochs = 1000
-        num_features = 2
+ 
 
-        model = models.PointAutoEncoderV2(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
+        model = models.PointAutoEncoderV2(num_points=pointcloudsize, latent_dim=latent_dimension, num_features=num_features)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-        criterion = chamfer_distance()
+        criterion = ChamferDistance()
         intermediate_save_path = None
 
         if epochs >= 500:
