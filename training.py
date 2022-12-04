@@ -13,9 +13,9 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
     val_kl_loss = 0
     model = model.to(device)
     rand_val_idx = random.randint(0, len(val_loader))
-    rand_val_sub_idx = random.randint(0, 16)
+    rand_val_sub_idx = random.randint(0, 10)
     rand_idx = random.randint(0, len(train_loader))
-    rand_sub_idx = random.randint(0, 16)
+    rand_sub_idx = random.randint(0, 10)
     for epoch in range(epochs):
         epoch_loss = 0
         epoch_rec_loss = 0

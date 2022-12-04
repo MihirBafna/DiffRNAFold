@@ -78,7 +78,7 @@ def main():
                 val_loader = torch.load(os.path.join(preprocess_output_path,f'val_dataloader_{studyname}.pth'))
 
         # modularize hyperparameter selection
-        epochs = 1000
+        epochs = 2000
         num_features = 0
         
         
@@ -103,4 +103,4 @@ def main():
         torch.save(trained_model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
 
 if __name__ == "__main__":
-    wandb.agent("evjy483c", project="DiffFold-Sweep", entity="diffrnafold", function=main)
+    wandb.agent("7vyprc9h", project="DiffFold-Sweep", entity="diffrnafold", function=main)
