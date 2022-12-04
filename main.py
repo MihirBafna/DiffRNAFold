@@ -47,7 +47,7 @@ def main():
     
         print("\n#------------------------------ Preprocessing ----------------------------#\n")
 
-        data_list, _ = preprocessing.create_pyg_datalist(data_dir_path, pointcloudsize)
+        data_list, _ = preprocessing.create_pyg_datalist(data_dir_path, pointcloudsize, withfeatures=False)
         train_loader, test_loader, val_loader = preprocessing.create_dataloaders(data_list, batch_size=1, with_val=withval)
         
         if not os.path.exists(preprocess_output_path):
@@ -68,7 +68,7 @@ def main():
 
         # modularize hyperparameter selection
         epochs = 1000
-        num_features = 3
+        num_features = 0
 
         model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
