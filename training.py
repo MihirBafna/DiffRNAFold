@@ -45,7 +45,7 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
                     _, reconstructed = model(x)
 
                 if idx == rand_idx:
-                    wandb.log({"epoch":epoch, "Ground Truth": wandb.Object3D({"type": "lidar/beta","points":x[rand_sub_idx, :, :]}), "Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_sub_idx, :, :]})})
+                    wandb.log({"epoch":epoch, "Ground Truth": wandb.Object3D({"type": "lidar/beta","points":x[rand_sub_idx, :, :]}), "Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_sub_idx, :, :]})},commit=False)
                 
                 # calculate num nodes that are unpadded
                 # num_atoms = data_detached.atom_number.max() - data_detached.atom_number.min() + 1
@@ -94,7 +94,7 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
                 elif type(model).__name__ == "PointAutoEncoder":
                     val_loss += reconstruction_loss
                 if val_idx == rand_val_idx:
-                    wandb.log({"epoch":epoch, "Val Ground Truth": wandb.Object3D({"type": "lidar/beta","points":val_x[rand_val_sub_idx, :, :]}), "Val Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_val_sub_idx, :, :]})})
+                    wandb.log({"epoch":epoch, "Val Ground Truth": wandb.Object3D({"type": "lidar/beta","points":val_x[rand_val_sub_idx, :, :]}), "Val Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_val_sub_idx, :, :]})},commit=False)
                 val_rec_loss += reconstruction_loss
                 val_mseloss += mse(reconstructed.detach(), val_x.detach()).item()
             if intermediate_save_path is not None:

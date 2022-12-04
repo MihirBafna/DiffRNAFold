@@ -7,7 +7,7 @@ sweep_configuration = {
         'name': 'val_loss'
 		},
     'parameters': {
-        'lr': {'max': 0.1, 'min': 0.0000001},
+        'lr': {'values': [0.0000001, 0.0000005, 0.000001, 0.000005, 0.00001, 0.00005, 0.0001]},
         'latent_dim':{'values':[64, 128, 256, 512, 1024]},
         'model_type':{'values': ['VAE', 'AE']}
     }

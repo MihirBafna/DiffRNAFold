@@ -103,4 +103,4 @@ def main():
         torch.save(trained_model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
 
 if __name__ == "__main__":
-    wandb.agent("kab3yo3k", project="DiffFold-Sweep", entity="diffrnafold", function=main)
+    wandb.agent("evjy483c", project="DiffFold-Sweep", entity="diffrnafold", function=main)
