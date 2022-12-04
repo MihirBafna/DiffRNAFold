@@ -88,12 +88,17 @@ class PointAutoEncoderV2(nn.Module):
         x = self.pointwise_layers(x)  # shape [b, k, num_points]
         encoding = self.pooling(x)  # shape [b, k, 1]
 
+        reconstructed_feature1 = self.mlp1(encoding.T).T
+        reconstructed_feature2 = self.mlp2(encoding.T).T
+
+        print(reconstructed_feature1.shape, reconstructed_feature2.shape)
+
+        reconstructed_points = self.decoder(encoding)  # shape [b, num_points * 3, 1]
+        reconstructed_points = reconstructed_points.view(b, num_points, 3)
         
+        reconstructed_x = torch.cat((reconstructed_points,reconstructed_feature1,reconstructed_feature2 ), axis=1)
 
-        x = self.decoder(encoding)  # shape [b, num_points * 3, 1]
-        restoration = x.view(b, num_points, 3)
-
-        return encoding, restoration
+        return encoding, reconstructed_x
 
 
 

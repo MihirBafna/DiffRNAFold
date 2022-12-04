@@ -5,6 +5,7 @@ import torch
 
 def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, intermediate_save_path=None):
     mse = torch.nn.MSELoss()
+    ce = torch.nn.CrossEntropyLoss()
     val_loss = 0
     val_mseloss = 0
     for epoch in range(epochs):
@@ -23,13 +24,15 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, i
                 num_atoms = data_detached.atom_number.max() - data_detached.atom_number.min() + 1
                 # print(reconstructed[:, :num_atoms, :].shape, data.pos.unsqueeze(0)[:, :num_atoms, :].shape)
                 
-                loss = criterion(reconstructed[:, :num_atoms, :], data.pos.unsqueeze(0)[:, :num_atoms, :], bidirectional=True)
-                # mseloss = mse(reconstructed[:, :num_atoms, 4:],  data.pos.unsqueeze(0)[:, :num_atoms, 4:])
-                # loss += mseloss
+                chamferloss = criterion(reconstructed[:, :num_atoms, :], data.pos.unsqueeze(0)[:, :num_atoms, :])
+                celoss = ce(reconstructed[:, :num_atoms, 4:],  data.pos.unsqueeze(0)[:, :num_atoms, 4:])
+                
+                loss = chamferloss + celoss
                 mseloss = mse(reconstructed.detach(), data.pos.unsqueeze(0).detach())
                 loss.backward()  # Backward pass.
                 optimizer.step()  # Update model parameters.
-                tepoch.set_postfix(loss=loss.item(), mse = mseloss.item())
+                tepoch.set_postfix(loss=loss.item(), chamfer=chamferloss.item(), ce=celoss.item(), mse = mseloss.item())
+                
                 epoch_loss += loss.item()
                 mse_loss += mseloss.item()
 

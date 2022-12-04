@@ -6,7 +6,8 @@ import argparse
 from rich.table import Table
 from rich.console import Console
 import torch
-from chamferdist import ChamferDistance
+# from chamferdist import ChamferDistance
+from pytorch3d.loss import chamfer_distance
 import preprocessing
 import models
 import wandb
@@ -68,11 +69,11 @@ def main():
 
         # modularize hyperparameter selection
         epochs = 1000
-        num_features = 0
+        num_features = 2
 
-        model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
+        model = models.PointAutoEncoderV2(num_points=pointcloudsize, latent_dim=128, num_features=num_features)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-        criterion = ChamferDistance()
+        criterion = chamfer_distance()
         intermediate_save_path = None
 
         if epochs >= 500:
