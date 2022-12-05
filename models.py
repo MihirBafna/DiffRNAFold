@@ -21,7 +21,48 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from denoising_diffusion_pytorch import Unet1D, GaussianDiffusion1D
 
+
+
+class LatentSpaceDiffusion1D(nn.Module):
+	def __init__(self, num_points, latent_dim, pointcloud_ae, hidden_dim=256):
+		super(LatentSpaceDiffusion1D, self).__init__()
+
+		self.unet_model = Unet1D(
+			dim = hidden_dim,
+			dim_mults = (1, 2, 4, 8),
+			channels = 1
+		)
+
+		self.diffusion_model = GaussianDiffusion1D(
+			self.unet_model,
+			seq_length = latent_dim,
+			timesteps = 1000,
+			objective = 'pred_x0'
+		)
+
+		self.pointcloud_ae = pointcloud_ae		# make sure to freeze this autoencoder during diffusion training
+		self.num_points = num_points
+		self.latent_dim = latent_dim	
+
+	def forward(self, x):
+		latent_embedding = self.pointcloud_ae.encode(x)	# encode initial point cloud into latent representation
+		latent_embedding_reshaped = torch.permute(latent_embedding, (0,2,1))
+		diffused_denoised_latent = self.diffusion_model(latent_embedding_reshaped) # diffuse/denoise on latent representation
+		diffused_denoised_latent_reshaped = torch.permute(diffused_denoised_latent, (0,2,1))
+		reconstructed_x = self.pointcloud_ae.decode(diffused_denoised_latent_reshaped, x.size()) # decode point cloud
+
+		return reconstructed_x
+
+	def sample(self, batch_size=1):
+
+		latent_sample = self.diffusion_model.sample(batch_size = batch_size)
+		latent_sample_reshaped =  torch.permute(latent_sample, (0,2,1))
+
+		generated = self.pointcloud_ae.decode(latent_sample_reshaped, (batch_size, self.num_points, 3))
+
+		return generated
 
 
 class PointVAE(nn.Module):
@@ -285,6 +326,21 @@ class PointAutoEncoder(nn.Module):
 			m.weight.data.normal_(mean=0.0, std=0.12)
 
 
+	def encode(self, x):
+		x = torch.permute(x, (0, 2, 1))
+		x = self.pointwise_layers(x)  # shape [b, k, num_points]
+		encoding = self.pooling(x)  # shape [b, k, 1]
+		return encoding
+
+
+	def decode(self, encoding, size):
+		batch_size, num_points, _ = size
+		decoded = self.decoder(encoding)
+		decoded = decoded.view(batch_size, num_points, 3)
+
+		return decoded
+
+
 	def forward(self, x):
 		"""
 		Arguments:
@@ -293,15 +349,10 @@ class PointAutoEncoder(nn.Module):
 			encoding: a float tensor with shape [b, k].
 			restoration: a float tensor with shape [b, 3, num_points].
 		"""
-		x = torch.permute(x, (0, 2, 1))
-		b, _, num_points = x.size()
-		x = self.pointwise_layers(x)  # shape [b, k, num_points]
-		encoding = self.pooling(x)  # shape [b, k, 1]
+		encoded = self.encode(x)	
+		decoded = self.decode(encoded, x.size())
 
-		x = self.decoder(encoding)  # shape [b, num_points * 3, 1]
-		restoration = x.view(b, num_points, 3 + self.num_features)
-
-		return encoding, restoration
+		return encoded, decoded
 
 
 
