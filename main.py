@@ -11,7 +11,7 @@ import models
 import wandb
 import training
 from pytorch3d.loss import chamfer_distance
-
+# from chamferdist import ChamferDistance
 
 
 def parse_arguments():
@@ -38,9 +38,9 @@ def main():
     }
     args = parse_arguments()
     if args is None or True:
-        mode = "preprocess,train"
-        data_dir_path = r'.\data\raw\all_representative_pdb_4_0__3_258'
-        output_dir_path = r'.\out'
+        mode = "train"
+        data_dir_path = r'./data/raw/all_representative_pdb_4_0__3_258'
+        output_dir_path = r'./out'
         studyname = "PDB(100-140)_Normalized_AE_Augmented_Metadata"
     else:
         mode = args.mode
@@ -51,7 +51,7 @@ def main():
     preprocess_output_path = os.path.join(output_dir_path, "preprocessed")
     training_output_path = os.path.join(output_dir_path, "train")
     # modularize hyperparameter selection
-    epochs = 1000
+    epochs = 10
     num_features = 0
     intermediate_save_path = None
     batchSize= 16
@@ -93,7 +93,7 @@ def main():
             intermediate_save_path3 = os.path.join(training_output_path,f'trained_model_{studyname}_checkpointepochs.pth')
             intermediate_save_path = (intermediate_save_path1, intermediate_save_path2, intermediate_save_path3)
             
-        wandb.init(project="DiffFold-Sweep", entity="diffrnafold", config=default_config)
+        wandb.init(project="DiffFold-Sweep", entity="diffrnafold", mode="disabled", config=default_config)
         if not os.path.exists(training_output_path):
             os.mkdir(training_output_path)
         if wandb.config.model_type == "VAE":

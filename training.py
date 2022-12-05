@@ -2,6 +2,8 @@ from tqdm import tqdm
 import wandb
 import torch
 import random
+import plotly.express as px
+import plotly.graph_objects as go
 
 def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, kl_coeff=1, intermediate_save_path=None):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -47,7 +49,11 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
                     _, reconstructed = model(x)
 
                 if idx == rand_idx:
-                    plotly_steps.append({"epoch": epoch, "Ground Truth": x[rand_sub_idx, :, :], "Reconstructed": reconstructed[rand_sub_idx, :, :]})
+                    plotly_steps.append(go.Frame(data=[go.Scatter3d(x=x[rand_sub_idx, :, 0].detach().cpu().numpy(), y=x[rand_sub_idx, :, 1].detach().cpu().numpy(), z=x[rand_sub_idx, :, 2].detach().cpu().numpy(), name="Ground Truth", mode='markers'),
+                                    go.Scatter3d(x=reconstructed[rand_sub_idx, :, 0].detach().cpu().numpy(), y=reconstructed[rand_sub_idx, :, 1].detach().cpu().numpy(), z=reconstructed[rand_sub_idx, :, 2].detach().cpu().numpy(), name="Reconstructed", mode='markers')
+                                   ]))
+                    # plotly_steps.append({"epoch":epoch, "x": x[rand_sub_idx, :, 0].detach().cpu().numpy(), "y": x[rand_sub_idx, :, 1].detach().cpu().numpy(), "z": x[rand_sub_idx, :, 2].detach().cpu().numpy(), "type":  "Ground Truth"})
+                    # plotly_steps.append({"epoch":epoch, "x": reconstructed[rand_sub_idx, :, 0].detach().cpu().numpy(), "y": reconstructed[rand_sub_idx, :, 1].detach().cpu().numpy(), "z": reconstructed[rand_val_sub_idx, :, 2].detach().cpu().numpy(), "type":  "Ground Truth"})
                     wandb.log({"epoch":epoch, "Ground Truth": wandb.Object3D({"type": "lidar/beta","points":x[rand_sub_idx, :, :]}), "Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_sub_idx, :, :]})},commit=False)
     
                 if type(model).__name__ == "PointVAE":
@@ -100,6 +106,8 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
                     val_loss += reconstruction_loss
                 if val_idx == rand_val_idx:
                     wandb.log({"epoch":epoch, "Val Ground Truth": wandb.Object3D({"type": "lidar/beta","points":val_x[rand_val_sub_idx, :, :]}), "Val Reconstructed": wandb.Object3D({"type": "lidar/beta","points":reconstructed[rand_val_sub_idx, :, :]})},commit=False)
+                    val_plotly_steps.append({"epoch":epoch, "x": x[rand_val_sub_idx, :, 0].detach().cpu().numpy(), "y": x[rand_val_sub_idx, :, 1].detach().cpu().numpy(), "z": x[rand_val_sub_idx, :, 2].detach().cpu().numpy(), "type":  "Ground Truth"})
+                    val_plotly_steps.append({"epoch":epoch, "x": reconstructed[rand_val_sub_idx, :, 0].detach().cpu().numpy(), "y": reconstructed[rand_val_sub_idx, :, 1].detach().cpu().numpy(), "z": reconstructed[rand_val_sub_idx, :, 2].detach().cpu().numpy(), "type":  "Ground Truth"})
                 val_rec_loss += reconstruction_loss
                 val_mseloss += mse(reconstructed.detach(), val_x.detach()).item()
             if intermediate_save_path is not None:
@@ -116,5 +124,25 @@ def train_model(model, optimizer, train_loader, epochs, criterion, val_loader, k
         
         if epoch == 500 and intermediate_save_path is not None:
             torch.save(model.state_dict(), intermediate_save_path[1])
-        
+    layout = go.Layout(scene = dict(xaxis = dict(nticks=20, range=[-1,1],), yaxis = dict(nticks=20, range=[-1,1],), zaxis = dict(nticks=10, range=[-1,1],),aspectmode="cube"),
+                  title="Reconstructed vs Ground Truth",
+        updatemenus=[dict(
+            type="buttons",
+            buttons=[dict(label="Play",
+                          method="animate",
+                          args=[None])])],
+        sliders=[dict(
+            active=10,
+            currentvalue={"prefix": "Epoch: "},
+            pad={"t": 50},
+            visible=True
+        )]
+        )
+    fig = go.Figure(
+    data=plotly_steps[0]["data"],
+    layout = layout, 
+    frames = plotly_steps[1:]
+)
+    # fig = px.scatter_3d(plotly_steps, x="x", y="y", z="z", color="type",animation_frame="epoch")
+    fig.write_html("./test.html")
     return model
