@@ -22,6 +22,8 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+
+
 class PointVAE(nn.Module):
 	"""
 	Adapted from: https://github.com/YiruS/PTC_VAE/tree/33cbebbd3f3567ef201338b8cb8cb8bf5568b2ad
@@ -146,6 +148,7 @@ class PointVAE(nn.Module):
 			m.bias.data.fill_(0)
 		if classname.find('Conv1d')!= -1:
 			m.weight.data.normal_(mean=0.0, std=0.12)
+
 
 class PointAutoEncoder(nn.Module):
 	def __init__(self, num_points, latent_dim, num_features = 0):
