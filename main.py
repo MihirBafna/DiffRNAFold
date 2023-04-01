@@ -55,7 +55,7 @@ def main():
         mode = "train"
         data_dir_path = r'./data/raw/all_representative_pdb_4_0__3_258'
         output_dir_path = r'./out'
-        studyname = "PDB(100-140)_Normalized_AE_Augmented_Metadata"
+        studyname = "GraphBasedAtomBondEncoded"
     else:
         mode = args.mode
         data_dir_path = args.inputdirpath
@@ -75,7 +75,7 @@ def main():
     withval = True
     augment_num = 1 # no augmentation
     latent_dimension = 128
-    criterion = chamfer_distance
+    criterion = None
     
     edge_dim = 11
     
@@ -89,7 +89,7 @@ def main():
     
         print("\n#------------------------------ Preprocessing ----------------------------#\n")
 
-        data_list, _ = preprocessing.create_pytorch_datalist(data_dir_path, pointcloudsize, withfeatures=with_features, augment_num=augment_num)
+        data_list = preprocessing.create_pytorch_datalist(data_dir_path, pointcloudsize, withfeatures=with_features, augment_num=augment_num)
         train_loader, test_loader, val_loader = preprocessing.create_dataloaders(data_list, batch_size=batchSize, with_val=withval)
         
         if not os.path.exists(preprocess_output_path):
@@ -115,7 +115,7 @@ def main():
             intermediate_save_path3 = os.path.join(training_output_path,f'trained_model_{studyname}_checkpointepochs.pth')
             intermediate_save_path = (intermediate_save_path1, intermediate_save_path2, intermediate_save_path3)
             
-        wandb.init(project="DiffFold-Sweep", entity="diffrnafold", mode="disabled", config=default_config)
+        # wandb.init(project="DiffFold-Sweep", entity="diffrnafold", mode="disabled", config=default_config)
         if not os.path.exists(training_output_path):
             os.mkdir(training_output_path)
             
@@ -128,13 +128,18 @@ def main():
         #     torch.save(trained_model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
 
 
-        if  wandb.config.model_type == "GAE":       # Graph based 
-            trainer = pl.Trainer() # add hyperparams here 
-            hyperparameters = dict()
-            model = build_gae_model(hyperparameters, type="GAE")
-            trainer.fit(model, train_loader, val_loader)
-                
-            torch.save(model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
+        # if  wandb.config.model_type == "GAE":       # Graph based 
+        trainer = pl.Trainer() # add hyperparams here 
+        # hyperparameters = dict()
+        hyperparameters = {
+        "max_nodes":pointcloudsize,
+        "embed_dim":default_config["latent_dim"],
+        "edge_dim":edge_dim
+    }
+        model = build_gae_model(hyperparameters, type="GAE")
+        trainer.fit(model, train_loader, val_loader)
+            
+        torch.save(model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
 
 if __name__ == "__main__":
     # wandb.agent("7vyprc9h", project="DiffFold-Sweep", entity="diffrnafold", function=main)

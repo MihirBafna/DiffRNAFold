@@ -3,7 +3,7 @@ from torch import Tensor
 from torch.nn import Module
 import torch.nn as nn
 import numpy as np
-from torch_geometric.nn import GCNConv,GATConv
+from torch_geometric.nn import GINEConv
 from torch_cluster import knn_graph
 from torchvision.ops import MLP
 from pytorch3d.loss import chamfer_distance
@@ -12,8 +12,8 @@ from pytorch3d.loss import chamfer_distance
 class GraphEncoder(torch.nn.Module):
     def __init__(self, in_dim, embed_dim, edge_dim):
         super(GraphEncoder, self).__init__()
-        self.conv1 = GATConv(in_dim, 2 * embed_dim, heads = 4, edge_dim=edge_dim) 
-        self.conv2 = GATConv(2 * embed_dim, embed_dim, heads = 4, edge_dim=edge_dim)
+        self.conv1 = GINEConv(in_dim, 2 * embed_dim, heads = 4, edge_dim=edge_dim) 
+        self.conv2 = GINEConv(2 * embed_dim, embed_dim, heads = 4, edge_dim=edge_dim)
 
     def forward(self, x, edge_index, edge_attr):
         x = self.conv1(x, edge_index,edge_attr).relu()

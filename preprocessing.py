@@ -6,13 +6,12 @@ import os
 from rich.progress import track
 import torch
 from torch_geometric.data import Data
-# from torch_geometric.loader import DataLoader
-from torch.utils.data import DataLoader, Dataset
+from torch_geometric.loader import DataLoader
 from biopandas.pdb import PandasPdb
 from collections import defaultdict
-
-
-
+import rdkit.Chem as Chem
+from featurizers import PDBFeaturizer
+import torch_geometric.transforms as T
 
 def pdb2pandas(pdb_path):
     df = PandasPdb().read_pdb(pdb_path).df["ATOM"]
@@ -58,70 +57,94 @@ def augment_pc(points):
     return  points @ (rotate_z @ rotate_y @ rotate_x).T
 
 
-
-
-def normalize_pc(points):
-	centroid = np.mean(points, axis=0)
-	points -= centroid
-	furthest_distance = np.max(np.sqrt(np.sum(abs(points)**2,axis=-1)))
-	points /= furthest_distance
-	return points
-
-
 def pad_pc(points, amount):
     coords_padded = np.pad(points, ((0, amount),(0, 0)), 'constant', constant_values=(0, 0))
     return coords_padded
 
+def get_maximum_distance(file_path):
+    points = PandasPdb().read_pdb(file_path).df["ATOM"][["x_coord", "y_coord", "z_coord"]].values
+    furthest_distance = np.max(np.sqrt(np.sum(abs(points)**2,axis=-1)))
+    return furthest_distance
 
-def create_pytorch_datalist(data_path, max_pointcloud_size, withfeatures=True, augment_num=10):
+def process_dfs(data_path):
+    dists = []
+    for filename in track(os.listdir(data_path), description="[cyan]Processing maximum distance from PDB files"):
+        if filename.endswith("pdb"):
+            file_path = os.path.join(data_path, filename)
+            dists.append(get_maximum_distance(file_path))
+    return max(dists)
+
+featurizer = PDBFeaturizer(use_edges=True)
+def process_file(data_path, max_nodes, filename, furthest_distance):
+    if filename.endswith("pdb"):
+        file_path = os.path.join(data_path, filename)
+        return featurizer.featurize(file_path, max_nodes, furthest_distance=furthest_distance)
+    return None, False
+
+    
+
+def create_pytorch_datalist(data_path, max_nodes, withfeatures=True, augment_num=10):
+    pad = T.Pad(max_num_nodes=max_nodes)
     datalist = []
     shape_list = []
+    # furthest_distance = process_dfs(data_path)
+    furthest_distance = 14
     for filename in track(os.listdir(data_path), description="[cyan]Creating PyG Data from RNA pdb files"):
-        if filename.endswith("pdb"):
-            pdb_df = pdb2pandas(os.path.join(data_path, filename))
+        graph, is_valid = process_file(data_path, max_nodes, filename, furthest_distance)
+        if(is_valid):
+            datalist.append(pad(graph.to_pyg_graph()))
+        
+    return datalist
+
+
+
+# def create_pytorch_datalist(data_path, max_pointcloud_size, withfeatures=True, augment_num=10):
+#     datalist = []
+#     shape_list = []
+#     for filename in track(os.listdir(data_path), description="[cyan]Creating PyG Data from RNA pdb files"):
+#         if filename.endswith("pdb"):
+#             pdb_df = pdb2pandas(os.path.join(data_path, filename))
             
-            atom_number = torch.from_numpy(pdb_df[["atom_number"]].to_numpy())
-            residue_ids = pdb_df['residue_id'].to_numpy()
-            element_ids = pdb_df['element_id'].to_numpy()
-            node_id = pdb_df[["node_id"]].to_numpy()
+#             atom_number = torch.from_numpy(pdb_df[["atom_number"]].to_numpy())
+#             residue_ids = pdb_df['residue_id'].to_numpy()
+#             element_ids = pdb_df['element_id'].to_numpy()
+#             node_id = pdb_df[["node_id"]].to_numpy()
             
-            raw_coordinates = pdb_df[["x_coord","y_coord","z_coord"]].to_numpy()         # should be shape (num_atoms,3)
+#             raw_coordinates = pdb_df[["x_coord","y_coord","z_coord"]].to_numpy()         # should be shape (num_atoms,3)
             
-            if raw_coordinates.shape[0] <= max_pointcloud_size and raw_coordinates.shape[0] >=100:
+#             if raw_coordinates.shape[0] <= max_pointcloud_size and raw_coordinates.shape[0] >=100:
                 
-                paddingamount = max_pointcloud_size - raw_coordinates.shape[0]
-                shape_list.append(raw_coordinates.shape[0])
+#                 paddingamount = max_pointcloud_size - raw_coordinates.shape[0]
+#                 shape_list.append(raw_coordinates.shape[0])
 
-                normalized_coordinates = normalize_pc(raw_coordinates)
+#                 normalized_coordinates = normalize_pc(raw_coordinates)
                 
-                temp_coordinates = normalized_coordinates.copy()    
-                for i in range(augment_num):
-                    feature_coordinates = np.concatenate((temp_coordinates, residue_ids, element_ids), axis=1) if withfeatures else temp_coordinates
-                    padded_coordinates = pad_pc(feature_coordinates, paddingamount)
-                    # data = Data(pos=torch.from_numpy(padded_coordinates).type(torch.FloatTensor), atom_number=atom_number, y=node_id, num_nodes=padded_coordinates.shape[0])
-                    # print(data)
-                    # data = {"pos": padded_coordinates.type(torch.FloatTensor), "atom_number":atom_number, "y": node_id, "num_nodes": padded_coordinates.shape[0]}
-                    data = {"x": torch.from_numpy(padded_coordinates).type(torch.FloatTensor), "metadata": filename,"atom_number":atom_number, "y": node_id, "num_nodes": padded_coordinates.shape[0]}
+#                 temp_coordinates = normalized_coordinates.copy()    
+#                 for i in range(augment_num):
+#                     feature_coordinates = np.concatenate((temp_coordinates, residue_ids, element_ids), axis=1) if withfeatures else temp_coordinates
+#                     padded_coordinates = pad_pc(feature_coordinates, paddingamount)
+#                     # data = Data(pos=torch.from_numpy(padded_coordinates).type(torch.FloatTensor), atom_number=atom_number, y=node_id, num_nodes=padded_coordinates.shape[0])
+#                     # print(data)
+#                     # data = {"pos": padded_coordinates.type(torch.FloatTensor), "atom_number":atom_number, "y": node_id, "num_nodes": padded_coordinates.shape[0]}
+#                     data = {"x": torch.from_numpy(padded_coordinates).type(torch.FloatTensor), "metadata": filename,"atom_number":atom_number, "y": node_id, "num_nodes": padded_coordinates.shape[0]}
+#                     datalist.append(data)
+#                     temp_coordinates = augment_pc(normalized_coordinates.copy())
 
-                    datalist.append(data)
-                    temp_coordinates = augment_pc(normalized_coordinates.copy())
-
-    return datalist, shape_list
+#     return datalist, shape_list
 
 
-class PDBDataset(Dataset):
-    def __init__(self, data):
-        self.pdbs = data
-    def __len__(self):
-        return len(self.pdbs)
-    def __getitem__(self, idx):
-        pdb = self.pdbs[idx]
-        return pdb["x"], pdb["metadata"]
+# class PDBDataset(Dataset):
+#     def __init__(self, data):
+#         self.pdbs = data
+#     def __len__(self):
+#         return len(self.pdbs)
+#     def __getitem__(self, idx):
+#         pdb = self.pdbs[idx]
+#         return pdb["x"], pdb["metadata"]
     
     
 def create_dataloaders(data_list, batch_size=1, with_val= False):
-    dataset = PDBDataset(data_list)
-    X_train, X_t = train_test_split(dataset, test_size=0.2, random_state=42)
+    X_train, X_t = train_test_split(data_list, test_size=0.2, random_state=42)
     
     if with_val:
         X_val, X_test = train_test_split(X_t, test_size=0.5, random_state=42)

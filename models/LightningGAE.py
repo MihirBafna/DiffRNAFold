@@ -17,7 +17,7 @@ import wandb
 EPS = 1e-15
 MAX_LOGSTD = 10
 
-class GAE(pl.LightningModule):
+class LightningGAE(pl.LightningModule):
     
     r"""The Graph Auto-Encoder model from the `"Variational Graph Auto-Encoders" <https://arxiv.org/abs/1611.07308>` paper based on user-defined encoder and decoder models.
 
@@ -34,7 +34,7 @@ class GAE(pl.LightningModule):
         self.encoder = encoder
         # self.decoder = InnerProductDecoder() if decoder is None else decoder
         self.decoder = decoder
-        GAE.reset_parameters(self)
+        LightningGAE.reset_parameters(self)
 
     def reset_parameters(self):
             r"""Resets all learnable parameters of the module."""
@@ -129,7 +129,7 @@ class GAE(pl.LightningModule):
         
         
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=wandb.config.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.00001)
         return optimizer
 
 
@@ -145,7 +145,8 @@ class GAE(pl.LightningModule):
     
 
     def validation_step(self, val_batch, batch_idx):
-        node_features, edge_index, edge_features, node_positions = val_batch
+        print(val_batch)
+        node_features, edge_index, edge_features, node_positions, _, _ = val_batch
         z = self.encoder(node_features, edge_index, edge_features)
         val_recon_edge_loss, val_auroc, val_ap = self.decode_and_evaluate(z, torch.ones(edge_index.shape[1]))
         val_recon_coord_loss = self.decoder.recon_coord_loss(z, node_positions)
