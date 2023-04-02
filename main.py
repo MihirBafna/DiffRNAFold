@@ -7,11 +7,11 @@ from rich.table import Table
 from rich.console import Console
 import torch
 import preprocessing
-import models
+# import models
 import wandb
 import training
 from pytorch3d.loss import chamfer_distance
-# from chamferdist import ChamferDistance
+import lightning.pytorch as pl
 
 
 def parse_arguments():
@@ -28,13 +28,27 @@ def parse_arguments():
     return args
 
 
+def build_gae_model(hyperparams, type="GAE"):    
 
+    from models import GNNs
+    from models.LightningGAE import LightningGAE
+    
+    in_dim = hyperparams["max_nodes"]
+    embed_dim = hyperparams["embed_dim"]
+    edge_dim = hyperparams["edge_dim"]
+    coord_dim = 3
+    
+    encoder = GNNs.GraphEncoder(in_dim, embed_dim, edge_dim )
+    decoder = GNNs.GraphDecoder(embed_dim, coord_dim)
+    gae = LightningGAE(encoder,decoder)
+
+    return gae
 
 def main():
     default_config = {
         "lr": 0.000790669,
         "latent_dim": 512,
-        "model_type": "AE"
+        "model_type": "GAE"
     }
     args = parse_arguments()
     if args is None or True:
@@ -62,6 +76,14 @@ def main():
     augment_num = 1 # no augmentation
     latent_dimension = 128
     criterion = chamfer_distance
+    
+    edge_dim = 11
+    
+    hyperparameters = {
+        "max_nodes":pointcloudsize,
+        "embed_dim":default_config["latent_dim"],
+        "edge_dim":edge_dim
+    }
     
     if "preprocess" in mode:
     
@@ -96,16 +118,23 @@ def main():
         wandb.init(project="DiffFold-Sweep", entity="diffrnafold", mode="disabled", config=default_config)
         if not os.path.exists(training_output_path):
             os.mkdir(training_output_path)
-        if wandb.config.model_type == "VAE":
-            model = models.PointVAE(num_points=pointcloudsize, latent_dim=wandb.config.latent_dim, num_features=num_features)
-        elif wandb.config.model_type == "AE":
-            model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=wandb.config.latent_dim, num_features=num_features)
-        else:
-            model = models.PointAutoEncoderV2(num_points=pointcloudsize, latent_dim=latent_dimension, num_features=num_features)
-        optimizer = torch.optim.Adam(model.parameters(), lr=wandb.config.lr)
-        trained_model = training.train_model(model, optimizer, train_loader, epochs, criterion, val_loader, batchSize, intermediate_save_path)
+            
+        # if wandb.config.model_type == "VAE":
+        #     model = models.PointVAE(num_points=pointcloudsize, latent_dim=wandb.config.latent_dim, num_features=num_features)
+        # elif wandb.config.model_type == "AE":
+        #     model = models.PointAutoEncoder(num_points=pointcloudsize, latent_dim=wandb.config.latent_dim, num_features=num_features)
+        #     optimizer = torch.optim.Adam(model.parameters(), lr=wandb.config.lr)
+        #     trained_model = training.train_model(model, optimizer, train_loader, epochs, criterion, val_loader, batchSize, intermediate_save_path)
+        #     torch.save(trained_model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
 
-        torch.save(trained_model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
+
+        if  wandb.config.model_type == "GAE":       # Graph based 
+            trainer = pl.Trainer() # add hyperparams here 
+            hyperparameters = dict()
+            model = build_gae_model(hyperparameters, type="GAE")
+            trainer.fit(model, train_loader, val_loader)
+                
+            torch.save(model.state_dict(), os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth'))
 
 if __name__ == "__main__":
     # wandb.agent("7vyprc9h", project="DiffFold-Sweep", entity="diffrnafold", function=main)

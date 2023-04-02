@@ -117,8 +117,8 @@ class PDBDataset(Dataset):
     def __getitem__(self, idx):
         pdb = self.pdbs[idx]
         return pdb["x"], pdb["metadata"]
-
-
+    
+    
 def create_dataloaders(data_list, batch_size=1, with_val= False):
     dataset = PDBDataset(data_list)
     X_train, X_t = train_test_split(dataset, test_size=0.2, random_state=42)
