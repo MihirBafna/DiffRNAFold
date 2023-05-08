@@ -7,7 +7,7 @@ class RNAdataset(Dataset):
         pass
 
     def __getitem__(self , index):
-         if self.trainsform:
+         if self.transform:
                 self.x=torch.from_numpy(self.x)
          return self.x
         

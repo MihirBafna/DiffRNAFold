@@ -13,6 +13,7 @@ import rdkit.Chem as Chem
 from featurizers import PDBFeaturizer
 import torch_geometric.transforms as T
 
+
 def pdb2pandas(pdb_path):
     df = PandasPdb().read_pdb(pdb_path).df["ATOM"]
     df["node_id"] = (
@@ -81,7 +82,6 @@ def process_file(data_path, max_nodes, filename, furthest_distance):
         return featurizer.featurize(file_path, max_nodes, furthest_distance=furthest_distance)
     return None, False
 
-    
 
 def create_pytorch_datalist(data_path, max_nodes, withfeatures=True, augment_num=10):
     pad = T.Pad(max_num_nodes=max_nodes)
