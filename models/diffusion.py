@@ -706,23 +706,22 @@ class GaussianDiffusion1D(nn.Module):
 
         model_out = self.model(x, t, x_self_cond)
 
-        # if self.objective == 'pred_noise':
-        #     target = noise
-        # elif self.objective == 'pred_x0':
-        #     target = x_start
-        # elif self.objective == 'pred_v':
-        #     v = self.predict_v(x_start, t, noise)
-        #     target = v
-        # else:
-        #     raise ValueError(f'unknown objective {self.objective}')
+        if self.objective == 'pred_noise':
+            target = noise
+        elif self.objective == 'pred_x0':
+            target = x_start
+        elif self.objective == 'pred_v':
+            v = self.predict_v(x_start, t, noise)
+            target = v
+        else:
+            raise ValueError(f'unknown objective {self.objective}')
         
-        return model_out
 
-        # loss = self.loss_fn(model_out, target, reduction = 'none')
-        # loss = reduce(loss, 'b ... -> b (...)', 'mean')
+        loss = self.loss_fn(model_out, target, reduction = 'none')
+        loss = reduce(loss, 'b ... -> b (...)', 'mean')
 
-        # loss = loss * extract(self.loss_weight, t, loss.shape)
-        # return loss.mean()
+        loss = loss * extract(self.loss_weight, t, loss.shape)
+        return loss.mean(), model_out
 
     def forward(self, img, *args, **kwargs):
         b, c, n, device, seq_length, = *img.shape, img.device, self.seq_length
@@ -733,23 +732,31 @@ class GaussianDiffusion1D(nn.Module):
         
         return self.p_losses(img, t, *args, **kwargs)
     
+
     
     def train_stable_diffusion(self, graphautoencoder, train_dataloader, device):
         import wandb
+        import os
         optimizer = graphautoencoder.configure_optimizers()
         t = tqdm(train_dataloader)
-        for train_batch in t:
-            train_batch = train_batch.to(device)
-            node_features, edge_index, edge_features, node_positions = train_batch.x, train_batch.edge_index, train_batch.edge_attr, train_batch.x[:,-3:]
-            z_gae = graphautoencoder.encoder(node_features, edge_index, edge_features)
-            z_diffusion = self(z_gae.unsqueeze(0))
-            train_recon_coord_loss, rmsd = graphautoencoder.decoder.recon_coord_loss(z_diffusion.squeeze(), node_positions)
-            train_total_loss =  train_recon_coord_loss + rmsd
-            train_total_loss.backward()
-            optimizer.step()
-            wandb.log({"total_loss":train_total_loss.item()})
-            t.set_postfix({"loss":train_total_loss.item()})
-            
+        for epoch in range(15):
+            for train_batch in t:
+                train_batch = train_batch.to(device)
+                node_features, edge_index, edge_features, node_positions = train_batch.x, train_batch.edge_index.int(), train_batch.edge_attr, train_batch.x[:,-3:]
+                z_gae = graphautoencoder.encoder(node_features,  edge_index[:, (edge_index < node_features.shape[0]).all(axis=0)], edge_features)
+                diff_loss, z_diffusion = self(z_gae.unsqueeze(0))
+                train_recon_coord_loss, _ = graphautoencoder.decoder.recon_coord_loss(z_diffusion.squeeze(), node_positions)
+                train_total_loss =  train_recon_coord_loss + diff_loss
+                train_total_loss.backward()
+                optimizer.step()
+                wandb.log({"epoch": epoch, "total_loss":train_total_loss.item()})
+                t.set_postfix({"loss":train_total_loss.item()})
+            # try:
+            #     torch.save(self.state_dict(), os.path.join("../out/train/", f'diffusion_model_gaehidden32_epoch{epoch}.pth'))
+            #     torch.save(self.state_dict(), os.path.join("./out/train/", f'diffusion_model_gaehidden32_epoch{epoch}.pth'))
+            # except:
+            #     pass
+
             
             
             

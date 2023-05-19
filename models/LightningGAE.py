@@ -169,48 +169,49 @@ class LightningGAE(pl.LightningModule):
 
    # EGNN encoder/decoder
   
-   def training_step(self, train_batch, batch_idx):
-       node_features, edge_index, edge_features, node_positions = train_batch.x[:,:-3], train_batch.edge_index, train_batch.edge_attr, train_batch.x[:,-3:]
-       latent_feats, latent_points = self.encoder(node_features,node_positions, edge_index, edge_features)
-       recon_feats, recon_points = self.decoder(node_features,node_positions, edge_index, edge_features)
-       self.log_dict({"train_total_loss":train_total_loss, "train_rmsd":rmsd})
-       wandb.log({"epoch":self.trainer.current_epoch,"train_total_loss":train_total_loss, "train_rmsd":rmsd})
-       return train_total_loss
-  
+#    def training_step(self, train_batch, batch_idx):
+#         node_features, edge_index, edge_features, node_positions = train_batch.x[:,:-3], train_batch.edge_index, train_batch.edge_attr, train_batch.x[:,-3:]
+#         latent_feats, latent_points = self.encoder(node_features,node_positions, edge_index, edge_features)
+#         recon_feats, recon_points = self.decoder(latent_feats,latent_points, edge_index, edge_features)
+#         chamfer, mse_feats, mse_points = self.decoder.recon_loss_equivariant(node_positions, recon_points, node_features, recon_feats)
+#         train_total_loss = chamfer + mse_feats + mse_points
+#         wandb.log({"epoch":self.trainer.current_epoch,"train_total_loss":train_total_loss, "train_mse_feats":mse_feats, "train_mse_points":mse_points})
+#         return train_total_loss
 
 
-   def validation_step(self, val_batch, batch_idx):
-       node_features, edge_index, edge_features, node_positions = val_batch.x, val_batch.edge_index, val_batch.edge_attr, val_batch.x[:,-3:]
-       z = self.encoder(node_features, edge_index, edge_features)       
-       val_recon_coord_loss, rmsd = self.decoder.recon_coord_loss(z, node_positions)
-       val_total_loss = val_recon_coord_loss
-       self.log_dict({"val_total_loss":val_total_loss, "val_rmsd":rmsd})
-       wandb.log({"epoch":self.trainer.current_epoch,"val_total_loss":val_total_loss, "val_rmsd":rmsd})
+
+#    def validation_step(self, val_batch, batch_idx):
+#         node_features, edge_index, edge_features, node_positions = val_batch.x[:,:-3], val_batch.edge_index, val_batch.edge_attr, val_batch.x[:,-3:]
+#         latent_feats, latent_points = self.encoder(node_features,node_positions, edge_index, edge_features)
+#         recon_feats, recon_points = self.decoder(latent_feats,latent_points, edge_index, edge_features)
+#         chamfer, mse_feats, mse_points = self.decoder.recon_loss_equivariant(node_positions, recon_points, node_features, recon_feats)
+#         val_total_loss = chamfer + mse_feats + mse_points
+#         wandb.log({"epoch":self.trainer.current_epoch,"val_total_loss":val_total_loss, "val_mse_feats":mse_feats, "val_mse_points":mse_points})
 
 
 
 
    # only chamfer loss
   
-   # def training_step(self, train_batch, batch_idx):
-   #     node_features, edge_index, edge_features, node_positions = train_batch.x, train_batch.edge_index, train_batch.edge_attr, train_batch.x[:,-3:]
-   #     z = self.encoder(node_features, edge_index, edge_features)
-   #     train_recon_coord_loss, rmsd = self.decoder.recon_coord_loss(z, node_positions)
-   #     train_total_loss =  train_recon_coord_loss + rmsd
-   #     # train_total_loss =  train_recon_coord_loss
-   #     self.log_dict({"train_total_loss":train_total_loss, "train_rmsd":rmsd})
-   #     wandb.log({"epoch":self.trainer.current_epoch,"train_total_loss":train_total_loss, "train_rmsd":rmsd})
-   #     return train_total_loss
+   def training_step(self, train_batch, batch_idx):
+       node_features, edge_index, edge_features, node_positions = train_batch.x, train_batch.edge_index.int(), train_batch.edge_attr, train_batch.x[:,-3:]
+       z = self.encoder(node_features, edge_index[:, (edge_index < node_features.shape[0]).all(axis=0)], edge_features)
+       train_recon_coord_loss, rmsd = self.decoder.recon_coord_loss(z, node_positions)
+       train_total_loss =  train_recon_coord_loss + rmsd
+    #    train_total_loss =  train_recon_coord_loss
+       self.log_dict({"train_total_loss":train_total_loss, "train_rmsd":rmsd}, on_step=False, on_epoch=True)
+       wandb.log({"epoch":self.trainer.current_epoch,"train_total_loss":train_total_loss, "train_rmsd":rmsd})
+       return train_total_loss
   
 
 
-   # def validation_step(self, val_batch, batch_idx):
-   #     node_features, edge_index, edge_features, node_positions = val_batch.x, val_batch.edge_index, val_batch.edge_attr, val_batch.x[:,-3:]
-   #     z = self.encoder(node_features, edge_index, edge_features)       
-   #     val_recon_coord_loss, rmsd = self.decoder.recon_coord_loss(z, node_positions)
-   #     val_total_loss = val_recon_coord_loss
-   #     self.log_dict({"val_total_loss":val_total_loss, "val_rmsd":rmsd})
-   #     wandb.log({"epoch":self.trainer.current_epoch,"val_total_loss":val_total_loss, "val_rmsd":rmsd})
+   def validation_step(self, val_batch, batch_idx):
+       node_features, edge_index, edge_features, node_positions = val_batch.x, val_batch.edge_index.int(), val_batch.edge_attr, val_batch.x[:,-3:]
+       z = self.encoder(node_features, edge_index[:, (edge_index < node_features.shape[0]).all(axis=0)], edge_features)       
+       val_recon_coord_loss, rmsd = self.decoder.recon_coord_loss(z, node_positions)
+       val_total_loss = val_recon_coord_loss
+       self.log_dict({"val_total_loss":val_total_loss, "val_rmsd":rmsd}, on_step=False, on_epoch=True)
+       wandb.log({"epoch":self.trainer.current_epoch,"val_total_loss":val_total_loss, "val_rmsd":rmsd})
       
 
 

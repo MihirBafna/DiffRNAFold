@@ -29,19 +29,24 @@ def parse_arguments():
     return args
 
 
-def build_gae_model(hyperparams, state_dict=None):    
+def build_gae_model(hyperparams, state_dict=None, equivariant = False):    
 
     from models import gnns
     from models.LightningGAE import LightningGAE
     
     # in_dim = hyperparams["max_nodes"]
-    in_dim = 33
+    in_dim = hyperparams["in_dim"]
     embed_dim = hyperparams["embed_dim"]
     edge_dim = hyperparams["edge_dim"]
     coord_dim = 3
     
-    encoder = gnns.GraphEncoder(in_dim, embed_dim, edge_dim )
-    decoder = gnns.GraphDecoder(embed_dim, coord_dim)
+    if equivariant:
+        encoder = gnns.EquivariantGraphEncoder(in_dim, embed_dim, edge_dim)
+        decoder = gnns.EquivariantGraphDecoder(embed_dim, in_dim, edge_dim)
+    else:
+        encoder = gnns.GraphEncoder(in_dim, embed_dim, edge_dim)
+        decoder = gnns.GraphDecoder(embed_dim, coord_dim)
+        
     gae = LightningGAE(encoder,decoder)
     
     if state_dict is not None:
@@ -56,31 +61,33 @@ def build_diffusion_model(hyperparams, state_dict=None):
     
     iteration_architecture = diffusion.Unet1D(
         dim = hyperparams["embed_dim"],
-        dim_mults = (1, 2, 4, 8),
+        dim_mults = (1, 2, 4),
         channels= hyperparams["num_nodes"]
     )
         
     diffusion = diffusion.GaussianDiffusion1D(
         iteration_architecture,
         seq_length = hyperparams["embed_dim"],
-        timesteps = 1000,
+        timesteps = 500,
         objective = 'pred_x0'
     )
+    
+    if state_dict is not None:
+        diffusion.load_state_dict(torch.load(state_dict))
     
     return diffusion
 
 
 def main():
-    default_config = {
-        "latent_dim": 512,
-        "model_type": "GAE"
-    }
+
     args = parse_arguments()
     if args is None or True:
         mode = "train_diffusion"
         data_dir_path = r'./data/raw/all_representative_pdb_4_0__3_258'
+        lm_embedding_path = "./data/rnabert_embeddings"
         output_dir_path = r'./out'
-        studyname = "GraphBasedAtomBondEncoded_nobatch"
+        dataname = "GraphBasedAtomBondEncoded_withknn"
+        studyname = "GAE_hidden32"
     else:
         mode = args.mode
         data_dir_path = args.inputdirpath
@@ -90,49 +97,45 @@ def main():
     preprocess_output_path = os.path.join(output_dir_path, "preprocessed")
     training_output_path = os.path.join(output_dir_path, "train")
     # modularize hyperparameter selection
-    epochs = 400
     num_features = 0
     intermediate_save_path = None
     # batchSize= 16
     batchSize = 1
     pointcloudsize = 140
-    augment_num=10
     with_features=False
     withval = True
     augment_num = 1 # no augmentation
-    criterion = None
-    
-    edge_dim = 11
-    
+    epochs = 400
     hyperparameters = {
         "num_nodes":pointcloudsize,
         "in_dim": 33,
-        "embed_dim":512,
+        "embed_dim":32,
         "edge_dim": 11
     }
+
     
     if "preprocess" in mode:
     
         print("\n#------------------------------ 1. Preprocessing ----------------------------#\n")
 
-        data_list = preprocessing.create_pytorch_datalist(data_dir_path, pointcloudsize, withfeatures=with_features, augment_num=augment_num)
+        data_list = preprocessing.create_pytorch_datalist(data_dir_path, pointcloudsize, withfeatures=with_features, augment_num=augment_num, lm_embedding_path=lm_embedding_path)
         train_loader, test_loader, val_loader = preprocessing.create_dataloaders(data_list, batch_size=batchSize, with_val=withval)
         
         if not os.path.exists(preprocess_output_path):
             os.mkdir(preprocess_output_path)
-        torch.save(train_loader, os.path.join(preprocess_output_path,f'train_dataloader_{studyname}.pth'))
-        torch.save(test_loader, os.path.join(preprocess_output_path,f'test_dataloader_{studyname}.pth'))
+        torch.save(train_loader, os.path.join(preprocess_output_path,f'train_dataloader_{dataname}.pth'))
+        torch.save(test_loader, os.path.join(preprocess_output_path,f'test_dataloader_{dataname}.pth'))
         if withval:
-            torch.save(val_loader, os.path.join(preprocess_output_path,f'val_dataloader_{studyname}.pth'))
+            torch.save(val_loader, os.path.join(preprocess_output_path,f'val_dataloader_{dataname}.pth'))
 
     if "train_gae" in mode:
         print("\n#------------------------------ 2. Training Autoencoder ----------------------------#\n")
 
         if not "preprocess" in mode:
-            train_loader = torch.load(os.path.join(preprocess_output_path,f'train_dataloader_{studyname}.pth'))
-            test_loader = torch.load(os.path.join(preprocess_output_path,f'test_dataloader_{studyname}.pth'))
+            train_loader = torch.load(os.path.join(preprocess_output_path,f'train_dataloader_{dataname}.pth'))
+            test_loader = torch.load(os.path.join(preprocess_output_path,f'test_dataloader_{dataname}.pth'))
             if withval:
-                val_loader = torch.load(os.path.join(preprocess_output_path,f'val_dataloader_{studyname}.pth'))
+                val_loader = torch.load(os.path.join(preprocess_output_path,f'val_dataloader_{dataname}.pth'))
 
 
         if epochs >= 500:
@@ -156,13 +159,8 @@ def main():
 
         # if  wandb.config.model_type == "GAE":       # Graph based 
         trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=epochs) # add hyperparams here 
-        # hyperparameters = dict()
-        hyperparameters = {
-        "max_nodes":pointcloudsize,
-        "embed_dim":default_config["latent_dim"],
-        "edge_dim":edge_dim
-        }
-        model = build_gae_model(hyperparameters, type="GAE")
+
+        model = build_gae_model(hyperparameters, equivariant=False)
         wandb.init(project="DiffRNAFold", entity="diffrnafold",mode="online")
         trainer.fit(model, train_loader, val_loader)
             
@@ -174,10 +172,10 @@ def main():
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         if not "preprocess" in mode:
-            train_loader = torch.load(os.path.join(preprocess_output_path,f'train_dataloader_{studyname}.pth'))
-            test_loader = torch.load(os.path.join(preprocess_output_path,f'test_dataloader_{studyname}.pth'))
+            train_loader = torch.load(os.path.join(preprocess_output_path,f'train_dataloader_{dataname}.pth'))
+            test_loader = torch.load(os.path.join(preprocess_output_path,f'test_dataloader_{dataname}.pth'))
             if withval:
-                val_loader = torch.load(os.path.join(preprocess_output_path,f'val_dataloader_{studyname}.pth'))
+                val_loader = torch.load(os.path.join(preprocess_output_path,f'val_dataloader_{dataname}.pth'))
                 
         trained_gae_model = build_gae_model(hyperparams=hyperparameters, state_dict= os.path.join(training_output_path,f'trained_model_{studyname}_{epochs}epochs.pth')).to(device)
         diffusion_model = build_diffusion_model(hyperparams=hyperparameters).to(device)
@@ -186,7 +184,7 @@ def main():
 
         diffusion_model.train_stable_diffusion(graphautoencoder=trained_gae_model, train_dataloader=train_loader, device=device)
 
-        torch.save(diffusion_model.state_dict(), os.path.join(training_output_path, f'diffusion_model_{studyname}_{epochs}epochs.pth'))
+        torch.save(diffusion_model.state_dict(), os.path.join(training_output_path, f'diffusion_model_{studyname}_15.pth'))
 
         
 

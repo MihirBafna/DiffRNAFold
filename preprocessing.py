@@ -41,6 +41,21 @@ def pdb2pandas(pdb_path):
     return df
 
 
+def add_knn_edges(k, old_edge_index, points):
+    from sklearn.neighbors import KDTree
+    tree = KDTree(points)
+    
+    new_edge_index = old_edge_index.clone()
+    
+    for i, point in enumerate(points):
+        _, indices = tree.query(points[i].unsqueeze(0), k)
+        new_edge_indices  = torch.cat((torch.from_numpy(indices), torch.ones(size=(1,k))*(i+1)), dim = 0)
+        # print(new_edge_index.shape,new_edge_indices.shape)
+        new_edge_index = torch.cat((new_edge_index, new_edge_indices), dim=1)
+
+    return new_edge_index
+
+
 def augment_pc(points):
     
     theta_x, theta_y, theta_z = tuple(np.random.rand(3) * 2 *np.pi)
@@ -83,7 +98,7 @@ def process_file(data_path, max_nodes, filename, furthest_distance):
     return None, False
 
 
-def create_pytorch_datalist(data_path, max_nodes, withfeatures=True, augment_num=10):
+def create_pytorch_datalist(data_path, max_nodes, withfeatures=True, augment_num=10, lm_embedding_path = None):
     pad = T.Pad(max_num_nodes=max_nodes)
     datalist = []
     shape_list = []
@@ -92,7 +107,13 @@ def create_pytorch_datalist(data_path, max_nodes, withfeatures=True, augment_num
     for filename in track(os.listdir(data_path), description="[cyan]Creating PyG Data from RNA pdb files"):
         graph, is_valid = process_file(data_path, max_nodes, filename, furthest_distance)
         if(is_valid):
-            datalist.append(pad(graph.to_pyg_graph()))
+            pyg_data = pad(graph.to_pyg_graph())
+            pyg_data.name = filename.split(".")[0]
+            if pyg_data.name+".npy" in os.listdir(lm_embedding_path):
+                pyg_data.lm_embedding = np.load(os.path.join(lm_embedding_path, pyg_data.name+".npy"), allow_pickle=True).squeeze()
+            pyg_data.edge_index = add_knn_edges(6, pyg_data.edge_index, pyg_data.x[:,-3:])
+            # print(pyg_data)
+            datalist.append(pyg_data)
         
     return datalist
 
